@@ -40,7 +40,7 @@ fn parse_row(line: &str) -> IResult<&str, (i64, i64)> {
 
 fn read_from_v2(filepath: &str) -> i64 {
     let sample = helpers::read(filepath).unwrap();
-    let (mut list1, mut list2): (Vec<i64>, Vec<i64>) = sample.iter()
+    let (mut list1, list2): (Vec<i64>, Vec<i64>) = sample.iter()
         .map(|line| parse_row(line.as_str()).unwrap().1)
         .fold((vec![], vec![]), |mut acc, (first, second)| {
             acc.0.push(first);

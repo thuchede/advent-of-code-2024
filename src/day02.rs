@@ -1,4 +1,3 @@
-use std::cmp::PartialEq;
 use nom::character::complete;
 use nom::bytes::complete::tag;
 use crate::helpers;

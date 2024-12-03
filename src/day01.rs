@@ -48,11 +48,9 @@ fn read_from_v2(filepath: &str) -> i64 {
             acc
         });
     list1.sort();
-    // let similarity_map = list2.iter().fold(HashMap::new(), |(acc, item)| acc.get);
     let similarity_map = list2.iter().counts();
 
     let similarity  = list1.iter().map(|e| (*similarity_map.get(e).unwrap_or(&0usize) as i64) * e).sum::<i64>();
-    println!("{:?}", similarity);
     similarity
 }
 

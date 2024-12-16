@@ -123,7 +123,10 @@ fn patrol<'a>(area: &Vec<Vec<char>>, start_pos: (usize, usize)) -> i64 {
 
 fn read_from_v2(filepath: &str) -> i64 {
     let sample = helpers::read(filepath).unwrap();
-    0
+    let area_map = sample.iter().map(|line| line.chars().collect::<Vec<char>>()).collect::<Vec<Vec<char>>>();
+    let starting_position = find_starting_position(&area_map);
+    // println!("{:?}", starting_position);
+    patrol_count_loop(&area_map, starting_position.unwrap())
 }
 
 // hitting road block clockwise
@@ -136,17 +139,18 @@ enum LoopCase {
 
 fn patrol_count_loop<'a>(area: &Vec<Vec<char>>, start_pos: (usize, usize)) -> i64 {
     let mut cloned_area = area.clone();
-    let mut patrolled_area: Vec<Vec<&mut char>> = cloned_area.iter_mut().map(|x| x.iter_mut().collect::<Vec<&mut char>>()).collect::<Vec<Vec<&mut char>>>();
+    // let mut patrolled_area: Vec<Vec<&mut char>> = cloned_area.iter_mut().map(|x| x.iter_mut().collect::<Vec<&mut char>>()).collect::<Vec<Vec<&mut char>>>();
     let (mut current_x_pos, mut current_y_pos):  (i64, i64) = (start_pos.0 as i64, start_pos.1 as i64);
     let mut currentDirection = Direction::North;
+    let mut currentLoopStartPoint = LoopCase::StartsAtThree;
     // TODO: need to update first iteration?
     let mut loop_count = 0;
-    let last_blocks: (Option<(usize, usize)>,Option<(usize, usize)>,Option<(usize, usize)>) = (None, None, None);
+    let mut last_blocks: (Option<(usize, usize)>,Option<(usize, usize)>,Option<(usize, usize)>) = (None, None, None);
     while !(
         current_y_pos < 0
-            || current_y_pos >= patrolled_area.len() as i64
+            || current_y_pos >= area.len() as i64
             || current_x_pos < 0
-            || current_x_pos >= patrolled_area.get(current_y_pos as usize).unwrap().len() as i64
+            || current_x_pos >= area.get(current_y_pos as usize).unwrap().len() as i64
     ) {
 
         // println!("PATROLL...ing in {:?} to ({current_x_pos},{current_y_pos})\n", currentDirection);
@@ -154,13 +158,37 @@ fn patrol_count_loop<'a>(area: &Vec<Vec<char>>, start_pos: (usize, usize)) -> i6
         // for (p, x) in patrolled_area.iter().enumerate() {
         //     println!("{p} {:?}", x);
         // }
-        let mut line = patrolled_area.get_mut(current_y_pos as usize).unwrap();
-        **(line.get_mut(current_x_pos as usize).unwrap()) = 'X';
+        // let mut line = area.get_mut(current_y_pos as usize).unwrap();
+        // **(line.get_mut(current_x_pos as usize).unwrap()) = 'X';
+        // TODO: remove patrolled area later?
 
         if currentDirection == Direction::North {
-            if current_y_pos - 1 >= 0 && **(patrolled_area.get_mut((current_y_pos-1) as usize).unwrap().get_mut((current_x_pos) as usize)).unwrap() == '#' {
+            if current_y_pos - 1 >= 0 && *(area.get((current_y_pos-1) as usize).unwrap().get((current_x_pos) as usize)).unwrap() == '#' {
                 // println!("  [ 0 ,  1 ,  2 ,  3 ,  4 ,  5 ,  6 ,  7 ,  8 ,  9 ]");
                 currentDirection = Direction::East;
+                // update last block
+                let current_block = (current_x_pos as usize, (current_y_pos-1) as usize);
+                last_blocks = (last_blocks.1, last_blocks.2, Some(current_block));
+                currentLoopStartPoint = LoopCase::StartsAtSix; // FIXME: USELESS???
+                // check for loop
+                let potential_block = get_potential_block_position(last_blocks, LoopCase::StartsAtSix, area.len(), area.get(0).unwrap().len());
+                if let Some(next_block) = potential_block {
+                    let path_to_next = check_direct_path(area, current_block, next_block, LoopCase::StartsAtSix);
+                    let path_from_next = check_direct_path(area, next_block, last_blocks.0.unwrap(), LoopCase::StartsAtNine);
+                    if path_to_next && path_from_next {
+                        loop_count+=1;
+                        println!("loop #{loop_count} found!");
+                        println!("Found a loop at {:?}", next_block);
+                        println!("previous nodes were {:?}", last_blocks);
+                        println!("  [ 0 ,  1 ,  2 ,  3 ,  4 ,  5 ,  6 ,  7 ,  8 ,  9 ]");
+                        let mut blocked = area.clone();
+                        let mut mut_blocked: Vec<Vec<&mut char>> = blocked.iter_mut().map(|x| x.iter_mut().collect::<Vec<&mut char>>()).collect::<Vec<Vec<&mut char>>>();
+                        **(mut_blocked.get_mut(next_block.1).unwrap().get_mut(next_block.0).unwrap()) = '@';
+                        for (p, x) in mut_blocked.iter().enumerate() {
+                            println!("{p} {:?}", x);
+                        }
+                    }
+                }
                 continue;
             } else {
                 current_y_pos -= 1;
@@ -169,8 +197,31 @@ fn patrol_count_loop<'a>(area: &Vec<Vec<char>>, start_pos: (usize, usize)) -> i6
         }
 
         if currentDirection == Direction::East {
-            if current_x_pos + 1 < patrolled_area.len() as i64 && **(patrolled_area.get_mut(current_y_pos as usize).unwrap().get_mut((current_x_pos+1) as usize)).unwrap() == '#' {
+            if current_x_pos + 1 < area.len() as i64 && *(area.get(current_y_pos as usize).unwrap().get((current_x_pos+1) as usize)).unwrap() == '#' {
                 currentDirection = Direction::South;
+                // update last block
+                let current_block = ((current_x_pos+1) as usize, current_y_pos as usize);
+                last_blocks = (last_blocks.1, last_blocks.2, Some(current_block));
+                currentLoopStartPoint = LoopCase::StartsAtNine; // FIXME: USELESS???
+                // check for loop
+                let potential_block = get_potential_block_position(last_blocks, LoopCase::StartsAtNine, area.len(), area.get(0).unwrap().len());
+                if let Some(next_block) = potential_block {
+                    let path_to_next = check_direct_path(area, current_block, next_block, LoopCase::StartsAtNine);
+                    let path_from_next = check_direct_path(area, next_block, last_blocks.0.unwrap(), LoopCase::StartsAtTwelve);
+                    if path_to_next && path_from_next {
+                        loop_count+=1;
+                        println!("loop #{loop_count} found!");
+                        println!("Found a loop at {:?}", next_block);
+                        println!("previous nodes were {:?}", last_blocks);
+                        println!("  [ 0 ,  1 ,  2 ,  3 ,  4 ,  5 ,  6 ,  7 ,  8 ,  9 ]");
+                        let mut blocked = area.clone();
+                        let mut mut_blocked: Vec<Vec<&mut char>> = blocked.iter_mut().map(|x| x.iter_mut().collect::<Vec<&mut char>>()).collect::<Vec<Vec<&mut char>>>();
+                        **(mut_blocked.get_mut(next_block.1).unwrap().get_mut(next_block.0).unwrap()) = '@';
+                        for (p, x) in mut_blocked.iter().enumerate() {
+                            println!("{p} {:?}", x);
+                        }
+                    }
+                }
                 continue;
             } else {
                 current_x_pos += 1;
@@ -178,8 +229,31 @@ fn patrol_count_loop<'a>(area: &Vec<Vec<char>>, start_pos: (usize, usize)) -> i6
         }
 
         if currentDirection == Direction::South {
-            if current_y_pos + 1 < patrolled_area.len() as i64 && **(patrolled_area.get_mut((current_y_pos+1) as usize).unwrap().get_mut((current_x_pos) as usize)).unwrap() == '#' {
+            if current_y_pos + 1 < area.len() as i64 && *(area.get((current_y_pos+1) as usize).unwrap().get((current_x_pos) as usize)).unwrap() == '#' {
                 currentDirection = Direction::West;
+                // update last block
+                let current_block = (current_x_pos as usize, (current_y_pos+1) as usize);
+                last_blocks = (last_blocks.1, last_blocks.2, Some(current_block));
+                currentLoopStartPoint = LoopCase::StartsAtTwelve; // FIXME: USELESS???
+                // check for loop
+                let potential_block = get_potential_block_position(last_blocks, LoopCase::StartsAtTwelve, area.len(), area.get(0).unwrap().len());
+                if let Some(next_block) = potential_block {
+                    let path_to_next = check_direct_path(area, current_block, next_block, LoopCase::StartsAtTwelve);
+                    let path_from_next = check_direct_path(area, next_block, last_blocks.0.unwrap(), LoopCase::StartsAtThree);
+                    if path_to_next && path_from_next {
+                        loop_count+=1;
+                        println!("loop #{loop_count} found!");
+                        println!("Found a loop at {:?}", next_block);
+                        println!("previous nodes were {:?}", last_blocks);
+                        println!("  [ 0 ,  1 ,  2 ,  3 ,  4 ,  5 ,  6 ,  7 ,  8 ,  9 ]");
+                        let mut blocked = area.clone();
+                        let mut mut_blocked: Vec<Vec<&mut char>> = blocked.iter_mut().map(|x| x.iter_mut().collect::<Vec<&mut char>>()).collect::<Vec<Vec<&mut char>>>();
+                        **(mut_blocked.get_mut(next_block.1).unwrap().get_mut(next_block.0).unwrap()) = '@';
+                        for (p, x) in mut_blocked.iter().enumerate() {
+                            println!("{p} {:?}", x);
+                        }
+                    }
+                }
                 continue;
             } else {
                 current_y_pos += 1;
@@ -187,8 +261,31 @@ fn patrol_count_loop<'a>(area: &Vec<Vec<char>>, start_pos: (usize, usize)) -> i6
         }
 
         if currentDirection == Direction::West {
-            if current_x_pos - 1 >= 0 && **(patrolled_area.get_mut(current_y_pos as usize).unwrap().get_mut((current_x_pos-1) as usize)).unwrap() == '#' {
+            if current_x_pos - 1 >= 0 && *(area.get(current_y_pos as usize).unwrap().get((current_x_pos-1) as usize)).unwrap() == '#' {
                 currentDirection = Direction::North;
+                // update last block
+                let current_block = ((current_x_pos-1) as usize, current_y_pos as usize);
+                last_blocks = (last_blocks.1, last_blocks.2, Some(current_block));
+                currentLoopStartPoint = LoopCase::StartsAtThree; // FIXME: USELESS???
+                // check for loop
+                let potential_block = get_potential_block_position(last_blocks, LoopCase::StartsAtThree, area.len(), area.get(0).unwrap().len());
+                if let Some(next_block) = potential_block {
+                    let path_to_next = check_direct_path(area, current_block, next_block, LoopCase::StartsAtThree);
+                    let path_from_next = check_direct_path(area, next_block, last_blocks.0.unwrap(), LoopCase::StartsAtSix);
+                    if path_to_next && path_from_next {
+                        loop_count+=1;
+                        println!("loop #{loop_count} found!");
+                        println!("Found a loop at {:?}", next_block);
+                        println!("previous nodes were {:?}", last_blocks);
+                        println!("  [ 0 ,  1 ,  2 ,  3 ,  4 ,  5 ,  6 ,  7 ,  8 ,  9 ]");
+                        let mut blocked = area.clone();
+                        let mut mut_blocked: Vec<Vec<&mut char>> = blocked.iter_mut().map(|x| x.iter_mut().collect::<Vec<&mut char>>()).collect::<Vec<Vec<&mut char>>>();
+                        **(mut_blocked.get_mut(next_block.1).unwrap().get_mut(next_block.0).unwrap()) = '@';
+                        for (p, x) in mut_blocked.iter().enumerate() {
+                            println!("{p} {:?}", x);
+                        }
+                    }
+                }
                 continue;
             } else {
                 current_x_pos -= 1;
@@ -400,6 +497,33 @@ mod tests {
         assert_eq!(res, false);
         let res = check_direct_path(&area, (3,1), (2,3), LoopCase::StartsAtNine);
         assert_eq!(res, false);
+        let area = vec![
+            //             ️?
+            vec!['.', '.', '.', '.', '#', '.', '.', '.', '.', '.'],
+            vec!['.', '.', '.', '.', '.', '.', '.', '.', '.', '#'],
+            vec!['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+            vec!['.', '.', '#', '.', '.', '.', '.', '.', '.', '.'],
+            vec!['.', '.', '.', '.', '.', '.', '.', '#', '.', '.'],
+            vec!['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+            vec!['.', '#', '.', '.', '^', '.', '.', '.', '.', '.'],
+            vec!['.', '.', '.', '.', '.', '.', '.', '.', '#', '.'],
+            vec!['#', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+            vec!['.', '.', '.', '.', '.', '.', '#', '.', '.', '.'],
+        ];
+        let res = check_direct_path(&area, (1,6), (2,0), LoopCase::StartsAtThree);
+        assert_eq!(res, false);
+    }
+
+    #[test]
+    fn test_patrol_count_loop() {
+        let area = vec![
+            vec!['.', '#', '.', '.'],
+            vec!['.', '.', '.', '#'],
+            vec!['.', '^', '.', '.'],
+            vec!['.', '.', '#', '.'],
+        ];
+        let res = patrol_count_loop(&area, (1,2));
+        assert_eq!(res, 1);
     }
 
     #[test]
